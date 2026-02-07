@@ -125,6 +125,8 @@ python3 transcribe_demo.py -c ./acestep-transcriber
 
 Make sure you have **Python 3.10, 3.11, or 3.12** installed from python.org and that **“Add Python to PATH”** was checked during installation.
 
+Also, make sure to download ffmpeg and put a copy of it in your path. <a href="
+
 Open **Command Prompt (cmd.exe)** and run:
 
 ```cmd
@@ -153,6 +155,8 @@ Download the Ace-Step transcription model:
 huggingface-cli download Ace-Step/acestep-transcriber --local-dir .\acestep-transcriber
 ```
 
+Install Flash Attention (See below)
+
 Start the Gradio demo:
 ```cmd
 python transcribe_demo.py -c .\acestep-transcriber
@@ -172,7 +176,7 @@ pip install -U flash-attn --no-build-isolation
 
 Building FlashAttention on Windows can be challenging. If that is the case, you may choose to install a **prebuilt wheel**.
 
-Prebuilt Windows wheels are available here:  
+Prebuilt Windows wheels are available here (I have tested a few of these, but since they're third party, use at your own risk):  
 https://github.com/kingbri1/flash-attention/releases
 
 ⚠️ **Important:**  
@@ -190,7 +194,14 @@ This repository installs **Torch 2.7 with CUDA 12.8**, so you only need to selec
 - **Python 3.12**  
   `flash_attn-2.8.3+cu128torch2.7.0cxx11abiFALSE-cp312-cp312-win_amd64.whl`
 
-FlashAttention-2 requires the model to be loaded in **`torch.float16`** or **`torch.bfloat16`**.
+Once you download it to your TranscriberModelDemo folder, you install it with 
+```cmd
+python -m pip install <downloaded wheel file>
+```
+Example:
+```cmd
+python -m pip install flash_attn-2.8.3+cu128torch2.7.0cxx11abiFALSE-cp310-cp310-win_amd64.whl
+```
 
 For hardware compatibility details, see the official documentation:  
 https://github.com/Dao-AILab/flash-attention
