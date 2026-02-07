@@ -125,7 +125,7 @@ python3 transcribe_demo.py -c ./acestep-transcriber
 
 Make sure you have **Python 3.10, 3.11, or 3.12** installed from python.org and that **“Add Python to PATH”** was checked during installation.
 
-Also, make sure to download ffmpeg and put a copy of it in your path. <a href="
+Also, make sure to download ffmpeg and put a copy of it in your path. <a href="https://www.ffmpeg.org/download.html#build-windows">Windows FFMPEG Downloads</a>
 
 Open **Command Prompt (cmd.exe)** and run:
 
