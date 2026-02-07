@@ -26,3 +26,5 @@ modelscope_studio==1.2.2
 transformers==4.52.3
 accelerate>=0.29,<1.0
 av
+huggingface_hub>=0.23
+metaphone
