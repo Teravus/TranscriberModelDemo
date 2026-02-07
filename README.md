@@ -162,6 +162,12 @@ Start the Gradio demo:
 python transcribe_demo.py -c .\acestep-transcriber
 ```
 
+Remember to reactivate the virtual environment if you close the cmd window or use the deactivate command before trying to load the demo again.
+From within the TranscriberModelDemo folder, Activate the virtual environment:
+```cmd
+call venv\Scripts\activate
+```
+
 ---
 
 ### Flash-Attention 2 Installation
@@ -222,6 +228,17 @@ Running on local: http://127.0.0.1:7860/
 ```
 
 Open the link in your browser to access the web UI, upload audio, and click **Submit** to transcribe.
+
+-- 
+## Virtual Environment Reactivation 
+
+Remember, if you close the CMD window or use the deactivate command, you'll need to activate the virtual environment again before running the demo.
+
+From within the TranscriberModelDemo folder, Activate the virtual environment:
+```cmd
+call venv\Scripts\activate
+```
+
 
 ---
 
