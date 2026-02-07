@@ -3,6 +3,11 @@
 A fork of the Alibaba **Qwen2.5-Omni** repository that can make use of the **Ace-Step song lyrics transcription model**  
 [`ACE-Step/acestep-transcriber`](https://huggingface.co/ACE-Step/acestep-transcriber) hosted on Hugging Face.
 
+<p align="center">
+  <img src="assets/Gradio_example.png" alt="Screenshot of the Gradio web UI showing audio upload and transcription output" width="80%">
+</p>
+
+
 To run this demo successfully, you need:
 
 - An **NVIDIA GPU with at least ~29 GB of available VRAM**
