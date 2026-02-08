@@ -3,19 +3,48 @@ import os
 import re
 import sys
 import ffmpeg
+import locale
+import importlib.util
 
 import numpy as np
 import gradio as gr
 import soundfile as sf 
+import torch
 
 import modelscope_studio.components.base as ms
 import modelscope_studio.components.antd as antd
 import gradio.processing_utils as processing_utils
 
-from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
+from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, BitsAndBytesConfig
 from gradio_client import utils as client_utils
 from qwen_omni_utils import process_mm_info
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
+
+def _parse_csv_list(value):
+    if value is None:
+        return []
+    value = value.strip()
+    if not value:
+        return []
+    return [v.strip() for v in value.split(",") if v.strip()]
+
+
+def _resolve_dtype(name):
+    if name == "float16":
+        return torch.float16
+    if name == "bfloat16":
+        return torch.bfloat16
+    if name == "float32":
+        return torch.float32
+    return torch.bfloat16
+
+
+def _ensure_bitsandbytes():
+    if importlib.util.find_spec("bitsandbytes") is None:
+        raise SystemExit(
+            "bitsandbytes is not installed. Install it to use --bnb-4bit, then re-run."
+        )
+
 
 def _load_model_processor(args):
     if args.cpu_only:
@@ -26,11 +55,26 @@ def _load_model_processor(args):
     # Check if flash-attn2 flag is enabled and load model accordingly
     if args.flash_attn2:
         try:
+            common_kwargs = {
+                "torch_dtype": "auto",
+                "attn_implementation": "flash_attention_2",
+                "device_map": device_map,
+            }
+            if args.bnb_4bit and not args.cpu_only:
+                _ensure_bitsandbytes()
+                skip_modules = _parse_csv_list(args.bnb_skip_modules)
+                common_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+                    bnb_4bit_compute_dtype=_resolve_dtype(args.bnb_4bit_compute_dtype),
+                    bnb_4bit_use_double_quant=args.bnb_4bit_double_quant,
+                    llm_int8_skip_modules=skip_modules or None,
+                )
+            elif args.bnb_4bit and args.cpu_only:
+                print("[bnb] --bnb-4bit ignored on CPU.")
+
             model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
-                args.checkpoint_path,
-                torch_dtype='auto',
-                attn_implementation='flash_attention_2',
-                device_map=device_map,
+                args.checkpoint_path, **common_kwargs
             )
         except Exception as exc:
             if sys.platform.startswith("win"):
@@ -53,26 +97,43 @@ def _load_model_processor(args):
                     f"{suggested}"
                     "  releases page:\n"
                     "    https://github.com/kingbri1/flash-attention/releases\n"
-                    "If you don't want FlashAttention, re-run with --flash-attn2 disabled (but it will probably crash with out of memory)."
+                    "If you don't want FlashAttention, re-run with --flash-attn2 disabled."
                 )
             else:
                 hint = (
                     "flash_attention_2 was requested but is not available. "
                     "Install FlashAttention2 for your platform (matching your CUDA/PyTorch), "
-                    "or re-run with --flash-attn2 disabled.(but it will probably crash with out of memory)"
+                    "or re-run with --flash-attn2 disabled."
                 )
             raise RuntimeError(hint) from exc
     else:
+        common_kwargs = {
+            "torch_dtype": "auto",
+            "device_map": device_map,
+        }
+        if args.bnb_4bit and not args.cpu_only:
+            _ensure_bitsandbytes()
+            skip_modules = _parse_csv_list(args.bnb_skip_modules)
+            common_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+                bnb_4bit_compute_dtype=_resolve_dtype(args.bnb_4bit_compute_dtype),
+                bnb_4bit_use_double_quant=args.bnb_4bit_double_quant,
+                llm_int8_skip_modules=skip_modules or None,
+            )
+        elif args.bnb_4bit and args.cpu_only:
+            print("[bnb] --bnb-4bit ignored on CPU.")
+
         model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
-            args.checkpoint_path,
-            device_map=device_map,
-            torch_dtype='auto',
+            args.checkpoint_path, **common_kwargs
         )
 
     processor = Qwen2_5OmniProcessor.from_pretrained(args.checkpoint_path)
     return model, processor
 
 def _launch_demo(args, model, processor):
+    if hasattr(model, "disable_talker"):
+        model.disable_talker()
     # Voice settings
     VOICE_LIST = ['Chelsie', 'Ethan']
     DEFAULT_VOICE = 'Chelsie'
@@ -81,6 +142,71 @@ def _launch_demo(args, model, processor):
     default_task_prompt = "*Task* Transcribe this audio in detail\n<audio>"
 
     language = args.ui_language
+
+    UI_TEXT = {
+        "title": {"en": "Ace Step-Transcriber Demo", "zh": "Ace Step-Transcriber 演示"},
+        "instructions_header": {"en": "🎯 Instructions for use:", "zh": "🎯 使用说明："},
+        "instructions_1": {
+            "en": "1️⃣ Click the Upload audio space or drop a song on the Audio space for transcribing.",
+            "zh": "1️⃣ 点击上传音频区域或将歌曲拖放到音频区域进行转录。",
+        },
+        "instructions_2": {
+            "en": "2️⃣ Click Submit and wait for the model's response.",
+            "zh": "2️⃣ 点击提交并等待模型的回复。",
+        },
+        "system_prompt": {"en": "System Prompt", "zh": "系统提示词"},
+        "task_prompt": {"en": "Task Prompt", "zh": "任务提示词"},
+        "do_sample": {"en": "Do Sample", "zh": "采样生成"},
+        "temperature": {"en": "Temperature", "zh": "温度"},
+        "top_p": {"en": "Top-p", "zh": "Top-p"},
+        "top_k": {"en": "Top-k", "zh": "Top-k"},
+        "repetition_penalty": {"en": "Repetition Penalty", "zh": "重复惩罚"},
+        "no_repeat_ngram": {"en": "No Repeat Ngram Size", "zh": "禁止重复 N-gram 长度"},
+        "min_new_tokens": {"en": "Min New Tokens", "zh": "最小新 Token 数"},
+        "num_beams": {"en": "Num Beams", "zh": "Beam 数"},
+        "upload_audio": {"en": "Upload Audio", "zh": "上传音频"},
+        "upload_image": {"en": "Upload Image", "zh": "上传图片"},
+        "upload_video": {"en": "Upload Video", "zh": "上传视频"},
+        "context_transcription": {"en": "Context transcription", "zh": "上下文转录"},
+        "placeholder": {"en": "Enter text here...", "zh": "在此输入文本..."},
+        "submit": {"en": "Submit", "zh": "提交"},
+        "stop": {"en": "Stop", "zh": "停止"},
+        "clear_history": {"en": "Clear History", "zh": "清除历史"},
+        "voice_choice": {"en": "Voice Choice", "zh": "语音选择"},
+        "offline_tab": {"en": "Offline", "zh": "离线"},
+        "online_tab": {"en": "Online", "zh": "在线"},
+    }
+
+    def _normalize_language_tag(tag: str) -> str:
+        if not tag:
+            return ""
+        lower = tag.strip().lower()
+        if lower.startswith("zh"):
+            return "zh"
+        if lower.startswith("en"):
+            return "en"
+        return ""
+
+    def _pick_language(browser_lang: str, request: gr.Request | None) -> str:
+        # Prefer explicit browser/gradio language override
+        lang = _normalize_language_tag(browser_lang)
+        if not lang and request is not None:
+            header = request.headers.get("accept-language", "")
+            if header:
+                lang = _normalize_language_tag(header.split(",")[0])
+        if not lang:
+            try:
+                sys_lang = locale.getdefaultlocale()[0] or ""
+            except Exception:
+                sys_lang = ""
+            lang = _normalize_language_tag(sys_lang)
+        if not lang:
+            lang = "en" if args.ui_language not in ("en", "zh") else args.ui_language
+        return lang
+
+    def _t(key: str, lang: str) -> str:
+        entry = UI_TEXT.get(key, {})
+        return entry.get(lang, entry.get("en", ""))
 
     def get_text(text: str, cn_text: str):
         if language == 'en':
@@ -142,7 +268,6 @@ def _launch_demo(args, model, processor):
                     })
         return messages
 
-    # Because we are telling Transformers to send us all the things, we have to remove the audio tags and various others
     def _extract_assistant_text(decoded: str):
         if not decoded:
             return ""
@@ -155,7 +280,6 @@ def _launch_demo(args, model, processor):
         decoded = re.sub(r"<\|[^|]*\|>", "", decoded)
         return decoded.strip()
 
-    # Some anomalous output from the model
     def _normalize_section_tags(text: str) -> str:
         if not text:
             return text
@@ -165,8 +289,6 @@ def _launch_demo(args, model, processor):
             "pre chorus": "pre-chorus",
             "post chorus": "post-chorus",
         }
-
-        # more anomalous output
         def repl(match):
             tag = match.group(1).strip().lower()
             tag = replacements.get(tag, tag)
@@ -190,7 +312,6 @@ def _launch_demo(args, model, processor):
             return f"[{tag}]"
         return re.sub(r"\[([^\[\]]+)\]", repl, text)
 
-    # Yes, even more anomalous output.
     def _clean_output_text(text: str) -> str:
         if not text:
             return text
@@ -216,11 +337,11 @@ def _launch_demo(args, model, processor):
     def predict(
         messages,
         voice=DEFAULT_VOICE,
-        do_sample=True,
-        temperature=0.7,
-        top_p=1,
-        top_k=30,
-        repetition_penalty=1.2,
+        do_sample=False,
+        temperature=0.3,
+        top_p=0.9,
+        top_k=50,
+        repetition_penalty=1.15,
         no_repeat_ngram_size=4,
         min_new_tokens=0,
         num_beams=1,
@@ -256,23 +377,27 @@ def _launch_demo(args, model, processor):
         if num_beams and num_beams > 1:
             gen_kwargs["thinker_num_beams"] = num_beams
 
-        text_ids, audio = model.generate(**inputs, **gen_kwargs)
+        gen_out = model.generate(**inputs, **gen_kwargs)
+        if isinstance(gen_out, (tuple, list)) and len(gen_out) == 2:
+            text_ids, audio = gen_out
+        else:
+            text_ids = gen_out
+            audio = None
 
-        # At first, it seemed that there was a beam search problem causing
-        # early termination but it turned out that transformers was hiding most of the output
         response = processor.batch_decode(text_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
         response = _extract_assistant_text(response[0])
         response = _clean_output_text(response)
         yield {"type": "text", "data": response}
 
-        audio = np.array(audio * 32767).astype(np.int16)
-        wav_io = io.BytesIO()
-        sf.write(wav_io, audio, samplerate=24000, format="WAV")
-        wav_io.seek(0)
-        wav_bytes = wav_io.getvalue()
-        audio_path = processing_utils.save_bytes_to_cache(
-            wav_bytes, "audio.wav", cache_dir=demo.GRADIO_CACHE)
-        yield {"type": "audio", "data": audio_path}
+        if audio is not None:
+            audio = np.array(audio * 32767).astype(np.int16)
+            wav_io = io.BytesIO()
+            sf.write(wav_io, audio, samplerate=24000, format="WAV")
+            wav_io.seek(0)
+            wav_bytes = wav_io.getvalue()
+            audio_path = processing_utils.save_bytes_to_cache(
+                wav_bytes, "audio.wav", cache_dir=demo.GRADIO_CACHE)
+            yield {"type": "audio", "data": audio_path}
 
     def media_predict(
         audio,
@@ -290,7 +415,7 @@ def _launch_demo(args, model, processor):
         min_new_tokens,
         num_beams,
     ):
-        # Always start with a fresh context on submit otherwise the model will mix-in the output from the last inference
+        # Always start with a fresh context on submit
         history = []
         # First yield
         yield (
@@ -425,8 +550,6 @@ def _launch_demo(args, model, processor):
         with gr.Sidebar(open=False):
             system_prompt_textbox = gr.Textbox(label="System Prompt",
                                             value=default_system_prompt)
-
-            # Added these so that users can experiment. The model is surprisingly stable in its outputs though.
             task_prompt_textbox = gr.Textbox(label="Task Prompt",
                                             value=default_task_prompt,
                                             lines=3)
@@ -468,19 +591,19 @@ def _launch_demo(args, model, processor):
                                         value=1)
         with antd.Flex(gap="small", justify="center", align="center"):
             with antd.Flex(vertical=True, gap="small", align="center"):
-                antd.Typography.Title("Ace Step-Transcriber Demo",
+                title_text = antd.Typography.Title("Ace Step-Transcriber Demo",
                                     level=1,
                                     elem_style=dict(margin=0, fontSize=28))
                 with antd.Flex(vertical=True, gap="small"):
-                    antd.Typography.Text(
+                    instruction_header = antd.Typography.Text(
                         get_text("🎯 Instructions for use:",
                                  "🎯 使用说明："),
                         strong=True)
-                    antd.Typography.Text(
+                    instruction_line_1 = antd.Typography.Text(
                         get_text(
                             "1️⃣ Click the Upload audio space or drop a song on the Audio space for transcribing.",
                             "1️⃣ 点击上传音频区域或将歌曲拖放到音频区域进行转录。"))
-                    antd.Typography.Text(
+                    instruction_line_2 = antd.Typography.Text(
                         get_text(
                             "2️⃣ Click Submit and wait for the model's response.",
                             "2️⃣ 点击提交并等待模型的回答。"))
@@ -528,6 +651,9 @@ def _launch_demo(args, model, processor):
                                         size="lg")
                     clear_btn = gr.Button(get_text("Clear History", "清除历史"),
                                         size="lg")
+                    submit_btn_offline = submit_btn
+                    stop_btn_offline = stop_btn
+                    clear_btn_offline = clear_btn
 
                 def clear_chat_history():
                     return [], gr.update(value=None), gr.update(
@@ -568,7 +694,7 @@ def _launch_demo(args, model, processor):
                                     video_input
                                 ])
 
-                # Add some custom CSS to improve the layout since we do not need them for this demo
+                # Add some custom CSS to improve the layout
                 gr.HTML("""
                     <style>
                         .media-upload {
@@ -594,7 +720,6 @@ def _launch_demo(args, model, processor):
                         }
                     </style>
                 """)
-            # We don't need this so hide it.
             with gr.Tab("Online", visible=False):
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -607,6 +732,9 @@ def _launch_demo(args, model, processor):
                                             variant="primary")
                         stop_btn = gr.Button(get_text("Stop", "停止"), visible=False)
                         clear_btn = gr.Button(get_text("Clear History", "清除历史"))
+                        submit_btn_online = submit_btn
+                        stop_btn_online = stop_btn
+                        clear_btn_online = clear_btn
                     with gr.Column(scale=2):
                         media_chatbot = gr.Chatbot(height=650, type="messages", label="Context transcription")
 
@@ -645,6 +773,81 @@ def _launch_demo(args, model, processor):
                                     inputs=None,
                                     outputs=[media_chatbot, microphone, webcam])
 
+        # Language auto-detect + gradio language override (when available)
+        ui_language_probe = gr.Textbox(visible=False)
+
+        def _apply_language(browser_lang: str, request: gr.Request):
+            lang = _pick_language(browser_lang, request)
+            return (
+                gr.update(value=_t("title", lang)),
+                gr.update(value=_t("instructions_header", lang)),
+                gr.update(value=_t("instructions_1", lang)),
+                gr.update(value=_t("instructions_2", lang)),
+                gr.update(label=_t("system_prompt", lang)),
+                gr.update(label=_t("task_prompt", lang)),
+                gr.update(label=_t("do_sample", lang)),
+                gr.update(label=_t("temperature", lang)),
+                gr.update(label=_t("top_p", lang)),
+                gr.update(label=_t("top_k", lang)),
+                gr.update(label=_t("repetition_penalty", lang)),
+                gr.update(label=_t("no_repeat_ngram", lang)),
+                gr.update(label=_t("min_new_tokens", lang)),
+                gr.update(label=_t("num_beams", lang)),
+                gr.update(label=_t("upload_audio", lang)),
+                gr.update(label=_t("upload_image", lang)),
+                gr.update(label=_t("upload_video", lang)),
+                gr.update(label=_t("context_transcription", lang)),
+                gr.update(label=_t("context_transcription", lang)),
+                gr.update(placeholder=_t("placeholder", lang)),
+                gr.update(value=_t("submit", lang)),
+                gr.update(value=_t("stop", lang)),
+                gr.update(value=_t("clear_history", lang)),
+                gr.update(value=_t("submit", lang)),
+                gr.update(value=_t("stop", lang)),
+                gr.update(value=_t("clear_history", lang)),
+                gr.update(label=_t("voice_choice", lang)),
+            )
+
+        demo.load(
+            fn=_apply_language,
+            inputs=[ui_language_probe],
+            outputs=[
+                title_text,
+                instruction_header,
+                instruction_line_1,
+                instruction_line_2,
+                system_prompt_textbox,
+                task_prompt_textbox,
+                do_sample_chk,
+                temperature_slider,
+                top_p_slider,
+                top_k_slider,
+                repetition_penalty_slider,
+                no_repeat_ngram_slider,
+                min_new_tokens_slider,
+                num_beams_slider,
+                audio_input,
+                image_input,
+                video_input,
+                chatbot,
+                media_chatbot,
+                text_input,
+                submit_btn_offline,
+                stop_btn_offline,
+                clear_btn_offline,
+                submit_btn_online,
+                stop_btn_online,
+                clear_btn_online,
+                voice_choice,
+            ],
+            js=(
+                "() => (window.gradio_config && ("
+                "window.gradio_config.language || "
+                "(window.gradio_config.i18n && window.gradio_config.i18n.lang)"
+                ")) || navigator.language || ''"
+            ),
+        )
+
     demo.queue(default_concurrency_limit=100, max_size=100).launch(max_threads=100,
                                                                 ssr_mode=False,
                                                                 share=args.share,
@@ -653,7 +856,7 @@ def _launch_demo(args, model, processor):
                                                                 server_name=args.server_name,)
 
 
-DEFAULT_CKPT_PATH = "acestep-transcriber"
+DEFAULT_CKPT_PATH = "Qwen/Qwen2.5-Omni-7B"
 def _get_args():
     parser = ArgumentParser()
 
@@ -669,7 +872,7 @@ def _get_args():
                         help="Device map for model loading (e.g., 'cuda:0').")
 
     parser.add_argument('--flash-attn2',
-                        action='store_true',
+                        action=BooleanOptionalAction,
                         default=True,
                         help='Enable flash_attention_2 when loading the model.')
     parser.add_argument('--share',
@@ -683,6 +886,33 @@ def _get_args():
     parser.add_argument('--server-port', type=int, default=7860, help='Demo server port.')
     parser.add_argument('--server-name', type=str, default='127.0.0.1', help='Demo server name.')
     parser.add_argument('--ui-language', type=str, choices=['en', 'zh'], default='en', help='Display language for the UI.')
+    parser.add_argument('--bnb-4bit', action='store_true', help='Enable bitsandbytes 4-bit quantization.')
+    parser.add_argument(
+        '--bnb-4bit-quant-type',
+        type=str,
+        default='nf4',
+        choices=['nf4', 'fp4'],
+        help='4-bit quantization type for bitsandbytes.',
+    )
+    parser.add_argument(
+        '--bnb-4bit-compute-dtype',
+        type=str,
+        default='bfloat16',
+        choices=['bfloat16', 'float16', 'float32'],
+        help='Compute dtype for 4-bit matmuls.',
+    )
+    parser.add_argument(
+        '--bnb-4bit-double-quant',
+        action=BooleanOptionalAction,
+        default=True,
+        help='Enable nested (double) quantization for 4-bit weights.',
+    )
+    parser.add_argument(
+        '--bnb-skip-modules',
+        type=str,
+        default='thinker.visual,thinker.audio_tower,token2wav,talker',
+        help='Comma-separated module names to keep in fp16/bf16.',
+    )
 
     args = parser.parse_args()
     return args

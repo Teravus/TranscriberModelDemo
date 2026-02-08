@@ -84,6 +84,52 @@ Uncommon words may be misinterpreted, and audio obstructions (heavy instrumentat
 
 ---
 
+#### Memory Strategy Performance
+
+Test setup: single-pass transcription, max reserved VRAM recorded during generation.
+
+| Audio Length | Standard (GB) | BnB 4-bit (GB) | Flash Attn2 (GB) | BnB + Flash Attn2 (GB) |
+| --- | --- | --- | --- | --- |
+| Model Load Only (0s) | 21.40 | 10.54 | 21.40 | 10.54 |
+| 30s | 21.68 | 11.25 | 21.50 | 11.20 |
+| 60s | 22.58 | 11.25 | 21.50 | 11.10 |
+| 90s | 24.57 | 12.01 | 21.50 | 11.10 |
+| 120s | 27.35 | 15.88 | 21.50 | 11.10 |
+| 150s | 30.92 | 19.50 | 21.50 | 11.10 |
+| 180s | 39.25 | 23.20 | 21.50 | 11.10 |
+| 210s | 44.59 | 29.60 | 21.50 | 11.10 |
+
+Notes:
+- Memory growth behavior differs by mode. Standard and BnB 4-bit scale with song duration; Flash Attn2 is flat.
+- **BitsAndBytes 4-bit introduces some transcription degradation on longer songs** when BnB is enabled, consistent with reduced numerical headroom in attention.
+
+**GPU compatibility conclusions**
+- 12 GB class (RTX 3080, 4070 Ti, 5070): Standard ❌, Flash only ⚠️, Both ✅ (expect mild degradation).
+- 16 GB class (RTX 4080, 4080 Ti, 5080): Standard ❌, Flash only ⚠️, Both ✅ (expect mild degradation).
+- 24 GB class (RTX 3090, 4090, 5080 Ti): Standard ⚠️ (short audio only), Flash Attn2 ✅, BnB optional.
+- 32 GB class (RTX 5090): Standard ✅ up to ~150s, Flash Attn2 ✅ for longer audio, BnB optional unless batching.
+
+Flash Attention2 is enabled by default.
+If you want to use BitsandBytes 4-bit Quantization, you must install the latest BitsAndBytes wheel with no deps, and then use the
+```cmd 
+--bnb-4bit
+```
+command-line flag.
+
+If you forget the nodeps part of the command, BitsandBytes will try and upgrade your Torch version which will install incompatible libraries.
+
+Windows:
+```cmd
+python -m pip install --no-deps https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-win_amd64.whl
+```
+
+Linux:
+```bash 
+python -m pip install --no-deps https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl
+```
+
+---
+
 ## Quickstart
 
 Make sure you have **Python 3.10, 3.11, or 3.12** installed and available in your `PATH`.
