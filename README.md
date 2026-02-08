@@ -133,7 +133,7 @@ python -m pip install --no-deps https://github.com/bitsandbytes-foundation/bitsa
 
 Linux:
 ```bash 
-python -m pip install --no-deps https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl
+python3 -m pip install --no-deps https://github.com/bitsandbytes-foundation/bitsandbytes/releases/download/continuous-release_main/bitsandbytes-1.33.7.preview-py3-none-manylinux_2_24_x86_64.whl
 ```
 
 ---
