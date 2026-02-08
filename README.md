@@ -283,6 +283,11 @@ Running on local: http://127.0.0.1:7860/
 
 Open the link in your browser to access the web UI, upload audio, and click **Submit** to transcribe.
 
+If you want BitsAndBytes 4bit quantization enabled, you need to use the --bnb-4bit command line argument
+```bash
+python transcribe_demo.py -c ./acestep-transcriber --bnb-4bit
+```
+
 -- 
 ## Virtual Environment Reactivation 
 
