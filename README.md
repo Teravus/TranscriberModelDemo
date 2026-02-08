@@ -16,10 +16,10 @@ To run this demo successfully, you need:
   - **BitsAndBytes 4-bit quantization** (`--bnb-4bit`) for the lowest VRAM usage, with mild degradation on longer songs.
 
 **GPU Recommendations**
-- 12 GB class (RTX 3080, 4070 Ti, 5070): Flash Attention + BitsAndBytes ✅(expect mild degradation).
-- 16 GB class (RTX 4080, 4080 Ti, 5080): Flash Attention + BitsAndBytes ✅(expect mild degradation).
-- 24 GB class (RTX 3090, 4090, 5080 Ti): Flash Attn2 ✅.
-- 32 GB class (RTX 5090): Flash Attn2 ✅ BitsAndBytes not recommended unless batching.
+- 12 GB class (RTX 3080, 4070 Ti, 5070): Flash Attention2 + BitsAndBytes ✅(expect mild degradation).
+- 16 GB class (RTX 4080, 4080 Ti, 5080): Flash Attention2 + BitsAndBytes ✅(expect mild degradation).
+- 24 GB class (RTX 3090, 4090, 5080 Ti): Flash Attention2 ✅.
+- 32 GB class (RTX 5090): Flash Attention2 ✅, Don't enable BitsAndBytes unless batching.
 
 
 ---
