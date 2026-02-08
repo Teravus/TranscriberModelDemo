@@ -10,9 +10,20 @@ A fork of the Alibaba **Qwen2.5-Omni** repository that can make use of the **Ace
 
 To run this demo successfully, you need:
 
-- An **NVIDIA GPU with at least ~29 GB of available VRAM**
-- **FlashAttention 2** installed  
-  (without it, the model will likely run out of memory during transcription)
+- An **NVIDIA GPU** (Ampere or newer recommended).
+- One of these memory strategies:
+  - **FlashAttention 2** (default in `transcribe_demo.py`) for flat VRAM usage.
+  - **BitsAndBytes 4-bit quantization** (`--bnb-4bit`) for the lowest VRAM usage, with mild degradation on longer songs.
+
+Typical minimum VRAM by strategy:
+- **FlashAttention 2 only:** ~21.5 GB peak (24 GB class GPUs recommended).
+- **BitsAndBytes + FlashAttention 2:** ~11 GB peak (12–16 GB class GPUs supported).
+
+GPU Recommendations
+- 12 GB class (RTX 3080, 4070 Ti, 5070): Standard ❌, Flash Attention2 only ⚠️, Both ✅ (expect mild degradation).
+- 16 GB class (RTX 4080, 4080 Ti, 5080): Standard ❌, Flash Attention2 ⚠️, Both ✅ (expect mild degradation).
+- 24 GB class (RTX 3090, 4090, 5080 Ti): Standard ⚠️ (short audio only), Flash Attention2 ✅, BnB optional.
+- 32 GB class (RTX 5090): Standard ✅ up to ~150s, Flash Attention2 ✅ for longer audio, BnB optional unless batching.
 
 ---
 
@@ -103,11 +114,6 @@ Notes:
 - Memory growth behavior differs by mode. Standard and BnB 4-bit scale with song duration; Flash Attn2 is flat.
 - **BitsAndBytes 4-bit introduces some transcription degradation on longer songs** when BnB is enabled, consistent with reduced numerical headroom in attention.
 
-**GPU compatibility conclusions**
-- 12 GB class (RTX 3080, 4070 Ti, 5070): Standard ❌, Flash only ⚠️, Both ✅ (expect mild degradation).
-- 16 GB class (RTX 4080, 4080 Ti, 5080): Standard ❌, Flash only ⚠️, Both ✅ (expect mild degradation).
-- 24 GB class (RTX 3090, 4090, 5080 Ti): Standard ⚠️ (short audio only), Flash Attn2 ✅, BnB optional.
-- 32 GB class (RTX 5090): Standard ✅ up to ~150s, Flash Attn2 ✅ for longer audio, BnB optional unless batching.
 
 Flash Attention2 is enabled by default.
 If you want to use BitsandBytes 4-bit Quantization, you must install the latest BitsAndBytes wheel with no deps, and then use the
