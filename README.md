@@ -10,9 +10,10 @@ A fork of the Alibaba **Qwen2.5-Omni** repository that can make use of the **Ace
 
 To run this demo successfully, you need:
 
-- **NVIDIA GPU with at least ~29 GB of available VRAM**
-- **FlashAttention 2** installed  
-  (without it, the model will likely run out of memory during transcription)
+- **NVIDIA Ampere+ class GPU with at least ~12 GB of available VRAM**
+- One of these memory strategies:
+  - **FlashAttention 2** (enabled by default in `transcribe_demo.py`) for flat VRAM usage.
+  - **BitsAndBytes 4-bit quantization** (`--bnb-4bit`) for the lowest VRAM usage, with mild degradation on longer songs.
 
 **GPU Recommendations**
 - 12 GB class (RTX 3080, 4070 Ti, 5070): Flash Attention + BitsAndBytes ✅(expect mild degradation).
