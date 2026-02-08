@@ -53,6 +53,8 @@ def _load_model_processor(args):
         device_map = args.device_map
 
     # Check if flash-attn2 flag is enabled and load model accordingly
+    # Flash Attention is enabled by default in default parameters.
+    # You can also apply 4 bit quantization using BitsAndBytes and have them both running
     if args.flash_attn2:
         try:
             common_kwargs = {
@@ -111,6 +113,10 @@ def _load_model_processor(args):
             "torch_dtype": "auto",
             "device_map": device_map,
         }
+
+        # Quantization Configuration is in default args at the bottom of this script if you're interested.  
+        # default config is 197 thinker layers quantized as linear4bit. Audio tower, video thinker, etc are skipped.
+        # (You can try experimental quantizations using command line arguments)
         if args.bnb_4bit and not args.cpu_only:
             _ensure_bitsandbytes()
             skip_modules = _parse_csv_list(args.bnb_skip_modules)
@@ -132,6 +138,9 @@ def _load_model_processor(args):
     return model, processor
 
 def _launch_demo(args, model, processor):
+    # Disable the vestigial and cursed text output.
+    # With bitsandbytes enabled, it can also cause a problem with this enabled.
+    
     if hasattr(model, "disable_talker"):
         model.disable_talker()
     # Voice settings
@@ -267,7 +276,8 @@ def _launch_demo(args, model, processor):
                         }]
                     })
         return messages
-
+    
+    # Since we're getting all of the special tags from transformers now, we have to get the sections that we want.
     def _extract_assistant_text(decoded: str):
         if not decoded:
             return ""
@@ -280,6 +290,7 @@ def _launch_demo(args, model, processor):
         decoded = re.sub(r"<\|[^|]*\|>", "", decoded)
         return decoded.strip()
 
+    # Odd output from the model.
     def _normalize_section_tags(text: str) -> str:
         if not text:
             return text
@@ -289,6 +300,7 @@ def _launch_demo(args, model, processor):
             "pre chorus": "pre-chorus",
             "post chorus": "post-chorus",
         }
+
         def repl(match):
             tag = match.group(1).strip().lower()
             tag = replacements.get(tag, tag)
@@ -311,7 +323,8 @@ def _launch_demo(args, model, processor):
                 tag = "Acapella Breakdown"
             return f"[{tag}]"
         return re.sub(r"\[([^\[\]]+)\]", repl, text)
-
+    
+    # deal with odd output from the model occasionally.
     def _clean_output_text(text: str) -> str:
         if not text:
             return text
@@ -720,6 +733,7 @@ def _launch_demo(args, model, processor):
                         }
                     </style>
                 """)
+            # Online is left over from the orgiginal demo.   I didn't see a reason to remove it completely.
             with gr.Tab("Online", visible=False):
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -807,7 +821,7 @@ def _launch_demo(args, model, processor):
                 gr.update(value=_t("clear_history", lang)),
                 gr.update(label=_t("voice_choice", lang)),
             )
-
+        # Localization labels
         demo.load(
             fn=_apply_language,
             inputs=[ui_language_probe],
@@ -840,7 +854,7 @@ def _launch_demo(args, model, processor):
                 clear_btn_online,
                 voice_choice,
             ],
-            js=(
+            js=( #Attempt to capture localization settings
                 "() => (window.gradio_config && ("
                 "window.gradio_config.language || "
                 "(window.gradio_config.i18n && window.gradio_config.i18n.lang)"
@@ -856,7 +870,7 @@ def _launch_demo(args, model, processor):
                                                                 server_name=args.server_name,)
 
 
-DEFAULT_CKPT_PATH = "Qwen/Qwen2.5-Omni-7B"
+DEFAULT_CKPT_PATH = "acestep-transcriber"
 def _get_args():
     parser = ArgumentParser()
 
@@ -886,6 +900,8 @@ def _get_args():
     parser.add_argument('--server-port', type=int, default=7860, help='Demo server port.')
     parser.add_argument('--server-name', type=str, default='127.0.0.1', help='Demo server name.')
     parser.add_argument('--ui-language', type=str, choices=['en', 'zh'], default='en', help='Display language for the UI.')
+    
+    # 4-bit Quantize Config
     parser.add_argument('--bnb-4bit', action='store_true', help='Enable bitsandbytes 4-bit quantization.')
     parser.add_argument(
         '--bnb-4bit-quant-type',
@@ -907,6 +923,7 @@ def _get_args():
         default=True,
         help='Enable nested (double) quantization for 4-bit weights.',
     )
+    # Quantize the thinker transformer stack only. leave the audio and video layers as is.
     parser.add_argument(
         '--bnb-skip-modules',
         type=str,
