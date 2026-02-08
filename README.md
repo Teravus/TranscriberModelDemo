@@ -173,6 +173,11 @@ Start the Gradio demo:
 python3 transcribe_demo.py -c ./acestep-transcriber
 ```
 
+If you want BitsAndBytes 4bit quantization enabled, you need to use the --bnb-4bit command line argument
+```bash
+python transcribe_demo.py -c ./acestep-transcriber --bnb-4bit
+```
+
 ---
 
 ### Windows (CMD)
@@ -215,7 +220,10 @@ Start the Gradio demo:
 ```cmd
 python transcribe_demo.py -c .\acestep-transcriber
 ```
-
+If you want BitsAndBytes 4bit quantization enabled, you need to use the --bnb-4bit command line argument
+```bash
+python transcribe_demo.py -c ./acestep-transcriber --bnb-4bit
+```
 Remember to reactivate the virtual environment if you close the cmd window or use the deactivate command before trying to load the demo again.
 From within the TranscriberModelDemo folder, Activate the virtual environment:
 ```cmd
